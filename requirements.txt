@@ -1,4 +1,8 @@
 streamlit
-transformers
-torch
+requests
+langchain
+faiss-cpu
+sentence-transformers
+numpy
+openai
 

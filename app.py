@@ -1,67 +1,90 @@
 import streamlit as st
 import requests
-import json
 
-# Title and introduction
-st.title("Immo Green AI System")
-st.write("Welcome to Immo Green! Your trusted real estate partner.")
+# Streamlit configuration
+st.set_page_config(page_title="Immo Green AI Chatbot", layout="wide")
 
-# API keys and sensitive data from Streamlit Secrets
-API_BASE_URL = st.secrets["api_base_url"]
-API_KEY = st.secrets["api_key"]
+# Welcome animation and introduction
+def show_welcome():
+    st.title("Welcome to Immo Green AI!")
+    st.video("https://www.example.com/welcome-video.mp4")  # Replace with actual video URL
+    st.write("""
+        At Immo Green AI, we offer advanced real estate services tailored to your needs.
+        Discover, buy, rent, or manage properties efficiently with our AI-powered system.
+    """)
 
-# Login/Registration
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# Login and user session
+def login():
+    st.sidebar.title("Login")
+    with st.sidebar.form("login_form"):
+        email = st.text_input("Email:")
+        password = st.text_input("Password:", type="password")
+        submit_button = st.form_submit_button("Login")
 
-if not st.session_state.logged_in:
-    st.subheader("Login / Register")
-    username = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        # Mock login logic or actual API call
-        if username and password:  # Replace with API authentication
-            st.session_state.logged_in = True
-            st.success("Logged in successfully!")
+        if submit_button:
+            st.session_state["user_logged_in"] = True
+            st.session_state["user_email"] = email
+            st.success("Login successful! Redirecting...")
+            st.experimental_rerun()
+
+# Chatbot functionality
+def chatbot():
+    # Display categories
+    st.write("Welcome back! How can we assist you today?")
+    option = st.selectbox("Choose a category:", [
+        "Buy or sell real estate",
+        "Rental and management",
+        "Renovation",
+        "Construction projects and planning"
+    ])
+
+    # Search functionality
+    if st.button("Ask a Question"):
+        query = st.text_input("Search for a property (e.g., 'Apartment in Zurich'):")
+        if query:
+            st.write(f"Searching for: {query}")
+            # Filter options
+            price = st.number_input("Price (Max):", step=1000, value=500000)
+            size = st.number_input("Size (Min in sqft):", step=100, value=500)
+            condition = st.selectbox("Condition:", ["New", "Renovated", "Old"])
+            region = st.text_input("Region (e.g., Zurich):")
+            property_type = st.selectbox("Property Type:", ["Apartment", "House", "Land", "Commercial"])
+            
+            # Placeholder for results
+            st.write("Results:")
+            st.write("Fetching results...")  # Replace with actual API or data logic
+
+    # AI Chat consultation
+    user_question = st.text_input("Ask the chatbot a question:")
+    if st.button("Consult"):
+        if user_question.strip():
+            with st.spinner("Generating response..."):
+                response = gimni_chat_response(user_question)  # Call the function for API interaction
+                st.write(f"**Immo Green AI:** {response}")
         else:
-            st.error("Invalid credentials. Please try again.")
+            st.warning("Please enter a question!")
+
+# Gimni API integration
+@st.cache_resource
+def gimni_chat_response(user_query):
+    api_key = st.secrets["GIMNI_API_KEY"]  # Store your API key in Streamlit Secrets
+    endpoint = "https://api.gimni.com/chat"  # Replace with the actual API endpoint
+    headers = {"Authorization": f"Bearer {api_key}"}
+    payload = {"query": user_query}
+    response = requests.post(endpoint, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        return response.json().get("response", "No response available.")
+    else:
+        return f"Error: {response.status_code}"
+
+# Main application flow
+if "user_logged_in" not in st.session_state:
+    st.session_state["user_logged_in"] = False
+
+if not st.session_state["user_logged_in"]:
+    show_welcome()
+    st.info("Please log in to access all features.")
+    login()
 else:
-    st.write(f"Welcome back, {username}!")
-    if st.button("Log out"):
-        st.session_state.logged_in = False
-
-# Chatbot Section
-st.subheader("AI Chatbot")
-user_query = st.text_input("Ask anything about our services or properties:")
-if user_query:
-    # Mock AI response or call to an LLM like GPT
-    ai_response = f"AI: [Placeholder for '{user_query}']"
-    st.write(ai_response)
-
-# Property Search Section
-st.subheader("Property Search")
-with st.form("search_form"):
-    keyword = st.text_input("Enter keywords (e.g., Apartment in Zurich)")
-    region = st.text_input("Preferred Region")
-    price_range = st.slider("Price Range (in USD)", 50000, 1000000, (100000, 500000))
-    submitted = st.form_submit_button("Search")
-    if submitted:
-        # Call client API
-        search_payload = {
-            "keyword": keyword,
-            "region": region,
-            "price_min": price_range[0],
-            "price_max": price_range[1]
-        }
-        response = requests.post(f"{API_BASE_URL}/search", headers={"Authorization": f"Bearer {API_KEY}"}, json=search_payload)
-        if response.status_code == 200:
-            properties = response.json()
-            for prop in properties:
-                st.write(f"**{prop['name']}**: {prop['price']}")
-        else:
-            st.error("Failed to fetch properties. Please try again later.")
-
-# Premium Section
-st.subheader("Upgrade to Premium")
-if st.button("Learn More"):
-    st.write("Premium users get access to exclusive features and faster support.")
+    chatbot()

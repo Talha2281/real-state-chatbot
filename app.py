@@ -1,5 +1,14 @@
 import streamlit as st
-from transformers import pipeline
+import requests
+from langchain.chains import ConversationalRetrievalChain
+from langchain.vectorstores import FAISS
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.document_loaders import WebBaseLoader
+from langchain.llms import OpenAI
+from langchain.agents import initialize_agent, Tool
+from langchain.prompts import PromptTemplate
+import faiss
+import numpy as np
 
 # Streamlit configuration
 st.set_page_config(page_title="Immo Green AI Chatbot", layout="wide")
@@ -65,16 +74,52 @@ def chatbot():
             st.warning("Please enter a question!")
 
 # Gimni API integration using API key
-@st.cache_resource
-def load_gimni_model():
-    # API key stored in Streamlit Secrets
-    api_key = st.secrets["GIMNI_API_KEY"]
-    return pipeline("text-generation", model=api_key)
-
-gimni_model = load_gimni_model()
-
 def generate_response(user_query):
-    return gimni_model(user_query, max_length=50, num_return_sequences=1)[0]["generated_text"]
+    api_key = st.secrets["GIMNI_API_KEY"]
+    headers = {
+        "Authorization": f"Bearer {api_key}"
+    }
+    url = "https://api.gimni.com/chat"  # The correct API endpoint for Gimni (or adjust as needed)
+    data = {"query": user_query}
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code == 200:
+            return response.json().get("response", "No response available.")
+        else:
+            return f"Error: {response.status_code}, please try again later."
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+
+# LangChain integration for data fetching from a website
+def fetch_data_from_website(url):
+    loader = WebBaseLoader(url)
+    data = loader.load()
+    return data
+
+# Create LangChain retriever and use it for Q&A
+def langchain_retriever(query):
+    url = "https://api.immobilienscout24.de/"  # Replace with the actual website you want to scrape
+    data = fetch_data_from_website(url)
+    
+    # Use Hugging Face's Sentence Transformers for Embeddings
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    
+    # Use FAISS as a vector store
+    vectors = embeddings.embed_documents([d.page_content for d in data])
+    
+    # Create FAISS index
+    index = faiss.IndexFlatL2(vectors[0].shape[0])
+    index.add(np.array(vectors))
+    
+    # Create the retriever
+    retriever = FAISS(index)
+    
+    # Use the retriever to answer the query
+    chain = ConversationalRetrievalChain.from_llm(OpenAI(temperature=0), retriever)
+    response = chain.run(query)
+    
+    return response
 
 # Main application flow
 if "user_logged_in" not in st.session_state:
@@ -86,4 +131,6 @@ if not st.session_state["user_logged_in"]:
     login()
 else:
     chatbot()
+
+
 

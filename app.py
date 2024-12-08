@@ -1,5 +1,5 @@
 import streamlit as st
-import requests
+from transformers import pipeline
 
 # Streamlit configuration
 st.set_page_config(page_title="Immo Green AI Chatbot", layout="wide")
@@ -59,24 +59,22 @@ def chatbot():
     if st.button("Consult"):
         if user_question.strip():
             with st.spinner("Generating response..."):
-                response = gimni_chat_response(user_question)  # Call the function for API interaction
+                response = generate_response(user_question)  # Call the function for interaction
                 st.write(f"**Immo Green AI:** {response}")
         else:
             st.warning("Please enter a question!")
 
-# Gimni API integration
+# Gimni API integration using API key
 @st.cache_resource
-def gimni_chat_response(user_query):
-    api_key = st.secrets["GIMNI_API_KEY"]  # Store your API key in Streamlit Secrets
-    endpoint = "https://api.gimni.com/chat"  # Replace with the actual API endpoint
-    headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {"query": user_query}
-    response = requests.post(endpoint, json=payload, headers=headers)
+def load_gimni_model():
+    # API key stored in Streamlit Secrets
+    api_key = st.secrets["GIMNI_API_KEY"]
+    return pipeline("text-generation", model=api_key)
 
-    if response.status_code == 200:
-        return response.json().get("response", "No response available.")
-    else:
-        return f"Error: {response.status_code}"
+gimni_model = load_gimni_model()
+
+def generate_response(user_query):
+    return gimni_model(user_query, max_length=50, num_return_sequences=1)[0]["generated_text"]
 
 # Main application flow
 if "user_logged_in" not in st.session_state:
@@ -88,3 +86,4 @@ if not st.session_state["user_logged_in"]:
     login()
 else:
     chatbot()
+

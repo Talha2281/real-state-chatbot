@@ -1,22 +1,18 @@
 import streamlit as st
 import requests
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.document_loaders import WebBaseLoader
 from langchain.chains import ConversationalRetrievalChain
-from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.document_loaders import WebBaseLoader
-from langchain.llms import OpenAI
-from langchain.agents import initialize_agent, Tool
-from langchain.prompts import PromptTemplate
 import faiss
 import numpy as np
 
 # Streamlit configuration
 st.set_page_config(page_title="Immo Green AI Chatbot", layout="wide")
 
-# Welcome animation and introduction
+# Welcome and introduction
 def show_welcome():
-    st.title("Welcome to Immo Green AI!")
-    st.video("https://www.example.com/welcome-video.mp4")  # Replace with actual video URL
+    st.title("👋 Welcome to Immo Green AI!")
     st.write("""
         At Immo Green AI, we offer advanced real estate services tailored to your needs.
         Discover, buy, rent, or manage properties efficiently with our AI-powered system.
@@ -34,7 +30,7 @@ def login():
             st.session_state["user_logged_in"] = True
             st.session_state["user_email"] = email
             st.success("Login successful! Redirecting...")
-            st.experimental_rerun()
+            st.experimental_set_query_params(logged_in="true")
 
 # Chatbot functionality
 def chatbot():
@@ -48,8 +44,8 @@ def chatbot():
     ])
 
     # Search functionality
-    if st.button("Ask a Question"):
-        query = st.text_input("Search for a property (e.g., 'Apartment in Zurich'):")
+    query = st.text_input("Search for a property (e.g., 'Apartment in Zurich'):")
+    if st.button("Search"):
         if query:
             st.write(f"Searching for: {query}")
             # Filter options
@@ -58,12 +54,10 @@ def chatbot():
             condition = st.selectbox("Condition:", ["New", "Renovated", "Old"])
             region = st.text_input("Region (e.g., Zurich):")
             property_type = st.selectbox("Property Type:", ["Apartment", "House", "Land", "Commercial"])
-            
-            # Placeholder for results
             st.write("Results:")
             st.write("Fetching results...")  # Replace with actual API or data logic
 
-    # AI Chat consultation
+    # Chat consultation
     user_question = st.text_input("Ask the chatbot a question:")
     if st.button("Consult"):
         if user_question.strip():
@@ -79,7 +73,7 @@ def generate_response(user_query):
     headers = {
         "Authorization": f"Bearer {api_key}"
     }
-    url = "https://api.gimni.com/chat"  # The correct API endpoint for Gimni (or adjust as needed)
+    url = "https://api.gimni.com/chat"  # Adjust this endpoint if necessary
     data = {"query": user_query}
     
     try:
@@ -99,7 +93,7 @@ def fetch_data_from_website(url):
 
 # Create LangChain retriever and use it for Q&A
 def langchain_retriever(query):
-    url = "https://api.immobilienscout24.de/"  # Replace with the actual website you want to scrape
+    url = "https://www.rekhta.org"  # Replace with the actual website you want to scrape
     data = fetch_data_from_website(url)
     
     # Use Hugging Face's Sentence Transformers for Embeddings
@@ -112,14 +106,13 @@ def langchain_retriever(query):
     index = faiss.IndexFlatL2(vectors[0].shape[0])
     index.add(np.array(vectors))
     
-    # Create the retriever
-    retriever = FAISS(index)
+    # Query the vector store
+    _, indices = index.search(np.array(embeddings.embed_query(query)).reshape(1, -1), k=1)
     
-    # Use the retriever to answer the query
-    chain = ConversationalRetrievalChain.from_llm(OpenAI(temperature=0), retriever)
-    response = chain.run(query)
-    
-    return response
+    if indices[0][0] != -1:
+        return data[indices[0][0]].page_content
+    else:
+        return "No relevant data found."
 
 # Main application flow
 if "user_logged_in" not in st.session_state:
@@ -131,6 +124,3 @@ if not st.session_state["user_logged_in"]:
     login()
 else:
     chatbot()
-
-
-

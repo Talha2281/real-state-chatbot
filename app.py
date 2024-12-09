@@ -3,7 +3,7 @@ from groq import Groq
 
 # Initialize the Groq client with the API key from Streamlit Secrets
 client = Groq(
-    api_key=st.secrets["GROQ_API_KEY"]  # Correctly access the API key from Streamlit secrets
+    api_key=st.secrets["GROQ_API_KEY"]  # Access the API key stored in Streamlit secrets
 )
 
 # Dummy property data for cities in Switzerland
@@ -91,18 +91,24 @@ def main():
 
 
 def get_chat_response(query):
-    """Get response from Groq model."""
-    query = query.lower().strip()  # Convert query to lowercase to make it case-insensitive
+    """Send the query to Groq API and get the response."""
+    query = query.lower().strip()  # Convert query to lowercase for consistency
+
+    # System message that sets the role of the model
+    system_message = {
+        "role": "system",
+        "content": "You are a real estate expert with knowledge about properties and cities in Switzerland. Your knowledge is limited to real estate matters and Swiss cities, their property prices, and related services. Do not provide any information about yourself or any general knowledge outside of real estate. When asked about yourself, respond by stating that you are an AI chatbot for real estate queries in Switzerland."
+    }
 
     # If it's a greeting, respond accordingly
     greetings = ["hi", "hello", "hey", "howdy", "hola", "greetings"]
     if any(greeting in query for greeting in greetings):
         return "Hello! How can I assist you with your real estate needs today? 😊"
 
-    # For other queries, send them to Groq model
+    # For other queries, send them to Groq model with system instructions
     try:
         chat_completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": query}],
+            messages=[system_message, {"role": "user", "content": query}],
             model="llama3-8b-8192",  # Replace with your desired model
         )
         return chat_completion.choices[0].message.content

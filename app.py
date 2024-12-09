@@ -1,10 +1,9 @@
-import os
 import streamlit as st
 from groq import Groq
 
-# Initialize the Groq client with the API key
+# Initialize the Groq client with the API key from Streamlit Secrets
 client = Groq(
-    api_key=os.environ.get("GROQ_API_KEY"),  # You can also use streamlit secrets
+    api_key=st.secrets["GROQ_API_KEY"]  # Correctly access the API key from Streamlit secrets
 )
 
 # Dummy property data for cities in Switzerland
@@ -99,7 +98,7 @@ def get_chat_response(query):
     greetings = ["hi", "hello", "hey", "howdy", "hola", "greetings"]
     if any(greeting in query for greeting in greetings):
         return "Hello! How can I assist you with your real estate needs today? 😊"
-    
+
     # For other queries, send them to Groq model
     try:
         chat_completion = client.chat.completions.create(

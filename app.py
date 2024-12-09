@@ -1,126 +1,147 @@
+import os
 import streamlit as st
-import requests
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.document_loaders import WebBaseLoader
-from langchain.chains import ConversationalRetrievalChain
-import faiss
-import numpy as np
+from groq import Groq
 
-# Streamlit configuration
-st.set_page_config(page_title="Immo Green AI Chatbot", layout="wide")
+# Initialize the Groq client with the API key
+client = Groq(
+    api_key=os.environ.get("GROQ_API_KEY"),  # You can also use streamlit secrets
+)
 
-# Welcome and introduction
-def show_welcome():
-    st.title("👋 Welcome to Immo Green AI!")
-    st.write("""
-        At Immo Green AI, we offer advanced real estate services tailored to your needs.
-        Discover, buy, rent, or manage properties efficiently with our AI-powered system.
-    """)
+# Dummy property data for cities in Switzerland
+dummy_properties = [
+    {"title": "2 BHK Apartment", "price": 250000, "location": "Zurich", "type": "Apartment"},
+    {"title": "3 BHK Villa", "price": 1000000, "location": "Geneva", "type": "Villa"},
+    {"title": "1 BHK Studio", "price": 150000, "location": "Basel", "type": "Studio"},
+    {"title": "Office Space", "price": 500000, "location": "Lausanne", "type": "Commercial"},
+    {"title": "4 BHK House", "price": 750000, "location": "Bern", "type": "Villa"},
+    {"title": "Luxury Penthouse", "price": 1200000, "location": "Lucerne", "type": "Apartment"},
+    {"title": "Cozy Studio", "price": 200000, "location": "Winterthur", "type": "Studio"},
+    {"title": "Retail Space", "price": 600000, "location": "Lugano", "type": "Commercial"},
+    {"title": "Modern Apartment", "price": 400000, "location": "St. Gallen", "type": "Apartment"},
+    {"title": "Classic Villa", "price": 900000, "location": "Thun", "type": "Villa"},
+]
 
-# Login and user session
-def login():
-    st.sidebar.title("Login")
-    with st.sidebar.form("login_form"):
-        email = st.text_input("Email:")
-        password = st.text_input("Password:", type="password")
-        submit_button = st.form_submit_button("Login")
+# Initialize session state for filters
+if "location" not in st.session_state:
+    st.session_state["location"] = "All"
+if "price_range" not in st.session_state:
+    st.session_state["price_range"] = "All"
+if "property_type" not in st.session_state:
+    st.session_state["property_type"] = "All"
+if "show_results" not in st.session_state:
+    st.session_state["show_results"] = False
 
-        if submit_button:
-            st.session_state["user_logged_in"] = True
-            st.session_state["user_email"] = email
-            st.success("Login successful! Redirecting...")
-            st.experimental_set_query_params(logged_in="true")
 
-# Chatbot functionality
-def chatbot():
-    # Display categories
-    st.write("Welcome back! How can we assist you today?")
-    option = st.selectbox("Choose a category:", [
-        "Buy or sell real estate",
-        "Rental and management",
-        "Renovation",
-        "Construction projects and planning"
-    ])
+def main():
+    # Page settings
+    st.set_page_config(page_title="Immo Green AI Chatbot", page_icon="🏡", layout="wide")
+
+    # Ask user if they are logged in
+    st.title("Welcome to Immo Green AI!")
+    st.info("Before we begin, let's confirm your login status.")
+    logged_in = st.radio(
+        "Have you logged in or registered on the official website?",
+        ("Yes", "No"),
+        index=1
+    )
+
+    if logged_in == "No":
+        st.warning("Please log in or register on the official website to use this service.")
+        st.write("[Go to Official Website](https://www.doclingo.ai)")
+        return
+
+    # Welcome message
+    st.success("Thank you for confirming! How can we assist you today?")
+    st.write("Use the chat below to ask questions or search for properties.")
+
+    # Chat functionality
+    st.subheader("Chat with Immo Green AI")
+    query = st.text_input("Ask your question:")
+    if query:
+        st.write(f"**Answer**: {get_chat_response(query)}")
 
     # Search functionality
-    query = st.text_input("Search for a property (e.g., 'Apartment in Zurich'):")
-    if st.button("Search"):
-        if query:
-            st.write(f"Searching for: {query}")
-            # Filter options
-            price = st.number_input("Price (Max):", step=1000, value=500000)
-            size = st.number_input("Size (Min in sqft):", step=100, value=500)
-            condition = st.selectbox("Condition:", ["New", "Renovated", "Old"])
-            region = st.text_input("Region (e.g., Zurich):")
-            property_type = st.selectbox("Property Type:", ["Apartment", "House", "Land", "Commercial"])
-            st.write("Results:")
-            st.write("Fetching results...")  # Replace with actual API or data logic
+    st.subheader("Search for Properties")
+    col1, col2, col3 = st.columns(3)
 
-    # Chat consultation
-    user_question = st.text_input("Ask the chatbot a question:")
-    if st.button("Consult"):
-        if user_question.strip():
-            with st.spinner("Generating response..."):
-                response = generate_response(user_question)  # Call the function for interaction
-                st.write(f"**Immo Green AI:** {response}")
-        else:
-            st.warning("Please enter a question!")
+    with col1:
+        st.session_state["location"] = st.selectbox(
+            "Location", ["All"] + list(set([prop["location"] for prop in dummy_properties])),
+            key="location_selector"
+        )
+    with col2:
+        st.session_state["price_range"] = st.selectbox(
+            "Price Range",
+            ["All", "100,000 - 200,000", "200,000 - 500,000", "500,000 - 1,000,000", "1,000,000+"],
+            key="price_selector"
+        )
+    with col3:
+        st.session_state["property_type"] = st.selectbox(
+            "Property Type",
+            ["All"] + list(set([prop["type"] for prop in dummy_properties])),
+            key="type_selector"
+        )
 
-# Gimni API integration using API key
-def generate_response(user_query):
-    api_key = st.secrets["GIMNI_API_KEY"]
-    headers = {
-        "Authorization": f"Bearer {api_key}"
-    }
-    url = "https://api.gimni.com/chat"  # Adjust this endpoint if necessary
-    data = {"query": user_query}
+    # Apply filters
+    if st.button("Apply Filters"):
+        st.session_state["show_results"] = True
+
+    # Show results
+    if st.session_state["show_results"]:
+        display_filtered_properties()
+
+
+def get_chat_response(query):
+    """Get response from Groq model."""
+    query = query.lower().strip()  # Convert query to lowercase to make it case-insensitive
+
+    # If it's a greeting, respond accordingly
+    greetings = ["hi", "hello", "hey", "howdy", "hola", "greetings"]
+    if any(greeting in query for greeting in greetings):
+        return "Hello! How can I assist you with your real estate needs today? 😊"
     
+    # For other queries, send them to Groq model
     try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 200:
-            return response.json().get("response", "No response available.")
-        else:
-            return f"Error: {response.status_code}, please try again later."
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": query}],
+            model="llama3-8b-8192",  # Replace with your desired model
+        )
+        return chat_completion.choices[0].message.content
     except Exception as e:
-        return f"An error occurred: {str(e)}"
+        return f"Sorry, I couldn't process your request. Error: {str(e)}"
 
-# LangChain integration for data fetching from a website
-def fetch_data_from_website(url):
-    loader = WebBaseLoader(url)
-    data = loader.load()
-    return data
 
-# Create LangChain retriever and use it for Q&A
-def langchain_retriever(query):
-    url = "https://www.rekhta.org"  # Replace with the actual website you want to scrape
-    data = fetch_data_from_website(url)
-    
-    # Use Hugging Face's Sentence Transformers for Embeddings
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    
-    # Use FAISS as a vector store
-    vectors = embeddings.embed_documents([d.page_content for d in data])
-    
-    # Create FAISS index
-    index = faiss.IndexFlatL2(vectors[0].shape[0])
-    index.add(np.array(vectors))
-    
-    # Query the vector store
-    _, indices = index.search(np.array(embeddings.embed_query(query)).reshape(1, -1), k=1)
-    
-    if indices[0][0] != -1:
-        return data[indices[0][0]].page_content
+def display_filtered_properties():
+    """Filter and display property results based on user selection."""
+    filtered_properties = []
+    for prop in dummy_properties:
+        # Location filter
+        if st.session_state["location"] != "All" and prop["location"] != st.session_state["location"]:
+            continue
+        # Price range filter
+        if st.session_state["price_range"] != "All":
+            if st.session_state["price_range"] == "100,000 - 200,000" and not (100000 <= prop["price"] <= 200000):
+                continue
+            if st.session_state["price_range"] == "200,000 - 500,000" and not (200000 <= prop["price"] <= 500000):
+                continue
+            if st.session_state["price_range"] == "500,000 - 1,000,000" and not (500000 <= prop["price"] <= 1000000):
+                continue
+            if st.session_state["price_range"] == "1,000,000+" and prop["price"] < 1000000:
+                continue
+        # Property type filter
+        if st.session_state["property_type"] != "All" and prop["type"] != st.session_state["property_type"]:
+            continue
+        # Add property to filtered results
+        filtered_properties.append(prop)
+
+    # Display results
+    st.subheader("Search Results")
+    if filtered_properties:
+        for prop in filtered_properties:
+            st.write(f"**{prop['title']}** - ${prop['price']} - {prop['location']} - {prop['type']}")
     else:
-        return "No relevant data found."
+        st.write("No properties match your search criteria. Please adjust the filters and try again.")
 
-# Main application flow
-if "user_logged_in" not in st.session_state:
-    st.session_state["user_logged_in"] = False
 
-if not st.session_state["user_logged_in"]:
-    show_welcome()
-    st.info("Please log in to access all features.")
-    login()
-else:
-    chatbot()
+if __name__ == "__main__":
+    main()

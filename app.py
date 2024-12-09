@@ -36,7 +36,7 @@ def main():
     st.set_page_config(page_title="Immo Green AI Chatbot", page_icon="🏡", layout="wide")
 
     # Ask user if they are logged in
-    st.title("Welcome to Immo Green AI!")
+    st.title("👋 Welcome to Immo Green AI!")
     st.info("Before we begin, let's confirm your login status.")
     logged_in = st.radio(
         "Have you logged in or registered on the official website?",
